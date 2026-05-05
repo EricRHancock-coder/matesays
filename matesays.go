@@ -67,9 +67,9 @@ func createNewQuote(index int, quote string) *Quote {
 func addQuote(quote string) int {
 	// loop over slice and get the max index and add one to it
 	newIndex := 0
-	for tempIndex, tmpQuote := range quotes {
-		if tmpQuote._Index > newIndex {
-			newIndex = tempIndex + 1
+	for _, tmpQuote := range quotes {
+		if tmpQuote._Index >= newIndex {
+			newIndex = tmpQuote._Index + 1
 		}
 	}
 
@@ -80,8 +80,8 @@ func addQuote(quote string) int {
 }
 
 func printAllQuotes() {
-	for tmpIndex, tmpQuote := range quotes {
-		fmt.Printf("%d: %s\n", tmpIndex, tmpQuote)
+	for _, tmpQuote := range quotes {
+		fmt.Printf("%d: %s\n", tmpQuote._Index, tmpQuote._Quote)
 	}
 }
 
