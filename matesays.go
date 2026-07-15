@@ -18,17 +18,30 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"flag"
 	"fmt"
+	"log"
+	"log/slog"
 	"os"
+	"time"
+
+	_ "modernc.org/sqlite"
 )
 
-type Quote struct {
-	_Index int    `json:"index"`
-	_Quote string `json:"quote"`
+type quote struct {
+	_ID        int
+	_quote     string
+	_timeStamp time.Time
 }
 
-var quotes []Quote
+var quotes []quote
+
+var (
+	db    *sql.DB
+	dbErr error
+)
 
 func main() {
 	var sFlag string
@@ -37,53 +50,140 @@ func main() {
 	flag.StringVar(&sFlag, "store", "", "Stores the quoted string and prints the number associated with it.")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-s string] [-q number]\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "This program stores and retrieves quotes that my roommate says.\n")
-		flag.PrintDefaults()
-		os.Exit(0)
+		printUsage()
+		os.Exit(1)
 	}
 
 	flag.Parse()
 
 	if sFlag == "" {
-		fmt.Fprintf(os.Stderr, "Error, cannot pass in empty quote.\n")
+		printUsage()
 		os.Exit(1)
 	}
 
+	// create logger
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelInfo, // Options LevelDebugm LevelInfo, LEvelWarnm LevelError
+	}
+
+	// create text handler or JSON handler
+	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
+	slog.SetDefault(logger)
+
+	db, dbErr := sql.Open("sqlite", "./matesays.db")
+	if dbErr != nil {
+		slog.Error("failed to open database", "error", dbErr)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	dbErr = createTables()
+	if dbErr != nil {
+		slog.Error("error creating table", "error", dbErr)
+	}
+
 	addQuote(sFlag)
-	fmt.Printf("Printing all quotes...\n")
+	addQuote("Dip turtle")
+	addQuote("Another noise")
+	log.Printf("Printing all quotes...\n")
 	printAllQuotes()
 }
 
-func createNewQuote(index int, quote string) *Quote {
-	newQuote := new(Quote)
-	newQuote._Index = index
-	newQuote._Quote = quote
+func printUsage() {
+	fmt.Fprintf(os.Stderr, "Usage: %s [-s string] [-q number]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "This program stores and retrieves quotes that my roommate says.\n")
+	flag.PrintDefaults()
+}
+
+func createNewQuote(index int, newQt string, newTm time.Time) *quote {
+	newQuote := new(quote)
+	newQuote._ID = index
+	newQuote._quote = newQt
+	newQuote._timeStamp = newTm
 
 	return newQuote
 }
 
 // storeQuote adds the quote to the quotes array
-func addQuote(quote string) int {
-	// loop over slice and get the max index and add one to it
-	newIndex := 0
-	for _, tmpQuote := range quotes {
-		if tmpQuote._Index >= newIndex {
-			newIndex = tmpQuote._Index + 1
-		}
-	}
+func addQuote(newQt *quote) int {
+	// loop over slice and get the max id and add one to it
+	newID := 0
 
-	newQuote := createNewQuote(newIndex, quote)
+	newQuote := newQt
 	quotes = append(quotes, *newQuote)
 
-	return newIndex
+	return newID
 }
 
 func printAllQuotes() {
 	for _, tmpQuote := range quotes {
-		fmt.Printf("%d: %s\n", tmpQuote._Index, tmpQuote._Quote)
+		fmt.Printf("%d: %s\n", tmpQuote._ID, tmpQuote._quote)
 	}
 }
 
-func saveQuotes(quotes []string) {
+// **************** DATABASE STUFF *************
+
+func createTables() error {
+	_, dbErr = db.Exec("CREATE TABLE  if not exists quotes ( id integer primary key autoincrement, quote string, created_time datetime default current_timestamp );")
+	if dbErr != nil {
+		return dbErr
+	}
+
+	return nil
+}
+
+func insertQuote(quote string) (int64, error) {
+	query := `insert into quotes (quote) values (?)`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := db.ExecContext(ctx, query, quote)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert quote: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err == nil {
+		slog.Info("Successfully inserted {%s} id {%d}\n", quote, id)
+	}
+
+	return id, nil
+}
+
+func getAllQuotes() error {
+	rows, err := db.Query("select id,quote,create_time from quotes")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var storedID int64
+	var storedQuote string
+	var storedTime time.Time
+	for rows.Next() {
+		if err := rows.Scan(&storedID, &storedQuotei, &storedTime); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func getQuote(id int64) (error, string, int64) {
+	rows, err := db.Query("select id,quote,create_time from quotes where id = ?", id)
+	if err != nil {
+		return err, "", 0
+	}
+	defer rows.Close()
+
+	var storedID int64
+	var storedQuote string
+	for rows.Next() {
+		if err := rows.Scan(&storedID, &storedQuote); err != nil {
+			return err, "", 0
+		}
+	}
+
+	return nil, storedQuote, storedID
 }
