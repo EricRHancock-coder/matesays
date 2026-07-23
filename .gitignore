@@ -1,0 +1,40 @@
+# Binaries and build output
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of `go build` for the module itself
+matesays
+
+# Dependency vendor directory (if not vendoring)
+vendor/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE and editor config
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Test coverage output
+*.out
+coverage.html
